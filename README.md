@@ -1,4 +1,4 @@
-## Multi Style Selector for SDXL 1.0
+## Multi Style Selector for SDXL
 Fork of https://github.com/ahgsql/StyleSelectorXL, with a checkboxes instead of radio buttons. So you can select multiple styles at once.
 
 ### Installation

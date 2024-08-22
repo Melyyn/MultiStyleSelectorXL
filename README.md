@@ -3,15 +3,15 @@ Fork of https://github.com/ahgsql/StyleSelectorXL, with a checkboxes instead of 
 
 ### Installation
 
-Enter this repo's URL in Automatic1111's extension tab "Install from Url":
+Copy and paste the URL below in Automatic1111's extension tab "Install from URL":
 
 https://github.com/ahgsql/StyleSelectorXL.git
 
+Make sure it's enabled in the extensions list. Restart Automatic1111 to start using it.
+
 ### Usage
 
-Enable or Disable it On Extension's panel, Write your subject into Prompt field,
-Select Style then hit Generate!
-The selected style will be applied to your current prompts.
+Write your subject into prompt field, select style(s) then hit generate. The selected styles will be applied to your prompt.
 
 ### Support the original author
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/ahgsql)

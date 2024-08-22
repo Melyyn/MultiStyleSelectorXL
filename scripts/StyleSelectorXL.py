@@ -1,11 +1,11 @@
 import contextlib
-
 import gradio as gr
 from modules import scripts, shared, script_callbacks
 from modules.ui_components import FormRow, FormColumn, FormGroup, ToolButton
 import json
 import os
 import random
+
 stylespath = ""
 
 
@@ -19,21 +19,14 @@ def get_json_content(file_path):
 
 
 def read_sdxl_styles(json_data):
-    # Check that data is a list
     if not isinstance(json_data, list):
         print("Error: input data must be a list")
         return None
 
     names = []
-
-    # Iterate over each item in the data list
     for item in json_data:
-        # Check that the item is a dictionary
-        if isinstance(item, dict):
-            # Check that 'name' is a key in the dictionary
-            if 'name' in item:
-                # Append the value of 'name' to the names list
-                names.append(item['name'])
+        if isinstance(item, dict) and 'name' in item:
+            names.append(item['name'])
     names.sort()
     return names
 
@@ -47,60 +40,43 @@ def getStyles():
     return styles
 
 
-def createPositive(style, positive):
+def createPositive(styles, positive):
     json_data = get_json_content(stylespath)
+    combined_prompt = positive
+
     try:
-        # Check if json_data is a list
         if not isinstance(json_data, list):
-            raise ValueError(
-                "Invalid JSON data. Expected a list of templates.")
+            raise ValueError("Invalid JSON data. Expected a list of templates.")
 
-        for template in json_data:
-            # Check if template contains 'name' and 'prompt' fields
-            if 'name' not in template or 'prompt' not in template:
-                raise ValueError(
-                    "Invalid template. Missing 'name' or 'prompt' field.")
+        for style in styles:
+            for template in json_data:
+                if template['name'] == style:
+                    combined_prompt = template['prompt'].replace('{prompt}', combined_prompt)
 
-            # Replace {prompt} in the matching template
-            if template['name'] == style:
-                positive = template['prompt'].replace(
-                    '{prompt}', positive)
-
-                return positive
-
-        # If function hasn't returned yet, no matching template was found
-        raise ValueError(f"No template found with name '{style}'.")
+        return combined_prompt
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 
 
-def createNegative(style, negative):
+def createNegative(styles, negative):
     json_data = get_json_content(stylespath)
+    combined_negative_prompt = negative
+
     try:
-        # Check if json_data is a list
         if not isinstance(json_data, list):
-            raise ValueError(
-                "Invalid JSON data. Expected a list of templates.")
+            raise ValueError("Invalid JSON data. Expected a list of templates.")
 
-        for template in json_data:
-            # Check if template contains 'name' and 'prompt' fields
-            if 'name' not in template or 'prompt' not in template:
-                raise ValueError(
-                    "Invalid template. Missing 'name' or 'prompt' field.")
+        for style in styles:
+            for template in json_data:
+                if template['name'] == style:
+                    json_negative_prompt = template.get('negative_prompt', "")
+                    if combined_negative_prompt:
+                        combined_negative_prompt = f"{json_negative_prompt}, {combined_negative_prompt}" if json_negative_prompt else combined_negative_prompt
+                    else:
+                        combined_negative_prompt = json_negative_prompt
 
-            # Replace {prompt} in the matching template
-            if template['name'] == style:
-                json_negative_prompt = template.get('negative_prompt', "")
-                if negative:
-                    negative = f"{json_negative_prompt}, {negative}" if json_negative_prompt else negative
-                else:
-                    negative = json_negative_prompt
-
-                return negative
-
-        # If function hasn't returned yet, no matching template was found
-        raise ValueError(f"No template found with name '{style}'.")
+        return combined_negative_prompt
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
@@ -139,80 +115,63 @@ class StyleSelectorXL(scripts.Script):
                             value=False, label="Generate All Styles In Order", info="To Generate Your Prompt in All Available Styles, Its Better to set batch count to " + str(len(self.styleNames)) + " ( Style Count)")
 
                 style_ui_type = shared.opts.data.get(
-                    "styles_ui",  "radio-buttons")
+                    "styles_ui", "checkboxes")
 
-                if style_ui_type == "select-list":
-                    style = gr.Dropdown(
-                        self.styleNames, value='base', multiselect=False, label="Select Style")
-                else:
-                    style = gr.Radio(
-                        label='Style', choices=self.styleNames, value='base')
-
-        # Ignore the error if the attribute is not present
+                style = gr.CheckboxGroup(
+                    label='Style', choices=self.styleNames, value=['base'])
 
         return [is_enabled, randomize, randomizeEach, allstyles, style]
 
-    def process(self, p, is_enabled, randomize, randomizeEach, allstyles,  style):
+    def process(self, p, is_enabled, randomize, randomizeEach, allstyles, styles):
         if not is_enabled:
             return
 
         if randomize:
-            style = random.choice(self.styleNames)
+            styles = [random.choice(self.styleNames)]
         batchCount = len(p.all_prompts)
 
         if(batchCount == 1):
-            # for each image in batch
             for i, prompt in enumerate(p.all_prompts):
-                positivePrompt = createPositive(style, prompt)
+                positivePrompt = createPositive(styles, prompt)
                 p.all_prompts[i] = positivePrompt
             for i, prompt in enumerate(p.all_negative_prompts):
-                negativePrompt = createNegative(style, prompt)
+                negativePrompt = createNegative(styles, prompt)
                 p.all_negative_prompts[i] = negativePrompt
+
         if(batchCount > 1):
-            styles = {}
+            style_map = {}
             for i, prompt in enumerate(p.all_prompts):
                 if(randomize):
-                    styles[i] = random.choice(self.styleNames)
+                    style_map[i] = [random.choice(self.styleNames)]
                 else:
-                    styles[i] = style
+                    style_map[i] = styles
                 if(allstyles):
-                    styles[i] = self.styleNames[i % len(self.styleNames)]
-            # for each image in batch
+                    style_map[i] = [self.styleNames[i % len(self.styleNames)]]
+
             for i, prompt in enumerate(p.all_prompts):
                 positivePrompt = createPositive(
-                    styles[i] if randomizeEach or allstyles else styles[0], prompt)
+                    style_map[i] if randomizeEach or allstyles else style_map[0], prompt)
                 p.all_prompts[i] = positivePrompt
             for i, prompt in enumerate(p.all_negative_prompts):
                 negativePrompt = createNegative(
-                    styles[i] if randomizeEach or allstyles else styles[0], prompt)
+                    style_map[i] if randomizeEach or allstyles else style_map[0], prompt)
                 p.all_negative_prompts[i] = negativePrompt
 
         p.extra_generation_params["Style Selector Enabled"] = True
         p.extra_generation_params["Style Selector Randomize"] = randomize
-        p.extra_generation_params["Style Selector Style"] = style
+        p.extra_generation_params["Style Selector Styles"] = styles
 
     def after_component(self, component, **kwargs):
-        # https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/7456#issuecomment-1414465888 helpfull link
-        # Find the text2img textbox component
-        if kwargs.get("elem_id") == "txt2img_prompt":  # postive prompt textbox
+        if kwargs.get("elem_id") == "txt2img_prompt":
             self.boxx = component
-        # Find the img2img textbox component
-        if kwargs.get("elem_id") == "img2img_prompt":  # postive prompt textbox
+        if kwargs.get("elem_id") == "img2img_prompt":
             self.boxxIMG = component
-
-        # this code below  works aswell, you can send negative prompt text box,provided you change the code a little
-        # switch  self.boxx with  self.neg_prompt_boxTXT  and self.boxxIMG with self.neg_prompt_boxIMG
-
-        # if kwargs.get("elem_id") == "txt2img_neg_prompt":
-            #self.neg_prompt_boxTXT = component
-        # if kwargs.get("elem_id") == "img2img_neg_prompt":
-            #self.neg_prompt_boxIMG = component
 
 
 def on_ui_settings():
     section = ("styleselector", "Style Selector")
     shared.opts.add_option("styles_ui", shared.OptionInfo(
-        "radio-buttons", "How should Style Names Rendered on UI", gr.Radio, {"choices": ["radio-buttons", "select-list"]}, section=section))
+        "checkboxes", "How should Style Names Rendered on UI", gr.CheckboxGroup, section=section))
 
     shared.opts.add_option(
         "enable_styleselector_by_default",
@@ -221,6 +180,8 @@ def on_ui_settings():
             "enable Style Selector by default",
             gr.Checkbox,
             section=section
-            )
+        )
     )
+
+
 script_callbacks.on_ui_settings(on_ui_settings)
